@@ -1,0 +1,100 @@
+#!/bin/sh
+
+#
+# Globals
+#
+master="gaia-dns"
+slaves="nyx-dns shu-dns"
+sshkey="~/.ssh/ns_ed255519"
+config="/usr/local/etc/nsd"
+editor="nvim"
+
+progname=${0##*/}
+
+#
+# Functions
+#
+usage ()
+{
+	cat <<EOF
+usage: $progname [options] ...
+
+EOF
+	exit 1
+}
+
+error ()
+{
+	echo "$progname: $*" >&2
+	exit 1
+}
+
+create_connection ()
+{
+	controlpath="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
+	masterssh="ssh -o ControlPath=$controlpath -i $sshkey" 
+	masterscp="scp -o ControlPath=$controlpath -i $sshkey" 
+	trap "cleanup" INT TERM HUP EXIT
+	if ! $masterssh -MNf $master
+	then
+		error "SSH connection to $master failed"
+	fi
+}
+
+list_zones ()
+{
+	if ! $masterssh $master "ls $config/*.zone"
+	then
+		error "SSH connection to $master failed"
+	fi
+}
+
+edit_zone ()
+{
+	zonefile="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
+	if ! $masterscp $master:$config/$zone.zone $zonefile > /dev/null;
+	then
+		error "could not download zone file from $master"
+	fi
+	$editor $zonefile
+}
+
+upload_zone ()
+{
+	echo "updating $master..."
+	$masterscp $zonefile $master:$config/$zone.zone > /dev/null && ssh -i $sshkey $master "service nsd reload" &
+
+	for slave in $slaves
+	do
+		echo "updating $slave..."
+		scp -i $sshkey $zonefile $slave:$config/$zone.zone > /dev/null && ssh -i $sshkey $slave "service nsd reload" &
+	done
+	wait
+}
+
+cleanup ()
+{
+	$MASTERSSH -O exit $master 2> /dev/null
+	rm $zonefile 2> /dev/null
+}
+
+#
+# Main
+#
+main ()
+{
+	create_connection
+	if [ $# -eq 0 ]
+	then
+		list_zones
+		echo "Please enter the zone:"
+		read zone
+		edit_zone
+		upload_zone
+	else
+	fi
+}
+
+main "$@"
+
+exit 0
