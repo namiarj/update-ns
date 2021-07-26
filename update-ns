@@ -75,7 +75,7 @@ upload_zone ()
 
 cleanup ()
 {
-	$MASTERSSH -O exit $master 2> /dev/null
+	$masterssh -O exit $master 2> /dev/null
 	rm $zonefile 2> /dev/null
 }
 
