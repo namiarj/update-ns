@@ -8,6 +8,7 @@ slaves="nyx-dns shu-dns"
 sshkey="~/.ssh/ns_ed255519"
 config="/usr/local/etc/nsd"
 editor="nvim"
+nsdcmd="service nsd reload"
 
 progname=${0##*/}
 
@@ -34,11 +35,11 @@ create_connection ()
 	controlpath="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
 	masterssh="ssh -o ControlPath=$controlpath -i $sshkey" 
 	masterscp="scp -o ControlPath=$controlpath -i $sshkey" 
-	trap "cleanup" INT TERM HUP EXIT
 	if ! $masterssh -MNf $master
 	then
 		error "SSH connection to $master failed"
 	fi
+	trap "cleanup" INT TERM HUP EXIT
 }
 
 list_zones ()
@@ -62,12 +63,12 @@ edit_zone ()
 upload_zone ()
 {
 	echo "updating $master..."
-	$masterscp $zonefile $master:$config/$zone.zone > /dev/null && ssh -i $sshkey $master "service nsd reload" &
+	$masterscp $zonefile $master:$config/$zone.zone > /dev/null && $masterssh $master $nsdcmd &
 
 	for slave in $slaves
 	do
 		echo "updating $slave..."
-		scp -i $sshkey $zonefile $slave:$config/$zone.zone > /dev/null && ssh -i $sshkey $slave "service nsd reload" &
+		scp -i $sshkey $zonefile $slave:$config/$zone.zone > /dev/null && ssh -i $sshkey $slave $nsdcmd &
 	done
 	wait
 }
@@ -87,7 +88,7 @@ main ()
 	if [ $# -eq 0 ]
 	then
 		list_zones
-		echo "Please enter the zone:"
+		echo "Please enter the zone"
 		read zone
 		edit_zone
 		upload_zone
