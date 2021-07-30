@@ -5,10 +5,13 @@
 #
 master="gaia-dns"
 slaves="nyx-dns shu-dns"
-sshkey="~/.ssh/ns_ed255519"
 config="/usr/local/etc/nsd"
-editor="nvim"
-nsdcmd="service nsd reload"
+
+#
+# Optional
+#
+#sshkey="~/.ssh/ns_ed255519"
+EDITOR="nvim"
 
 progname=${0##*/}
 
@@ -30,21 +33,48 @@ error ()
 	exit 1
 }
 
-create_connection ()
+gen_tmp ()
 {
-	controlpath="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
-	masterssh="ssh -o ControlPath=$controlpath -i $sshkey" 
-	masterscp="scp -o ControlPath=$controlpath -i $sshkey" 
+	tmpfile="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
+}
+
+connect_master ()
+{
+	if [ $sshkey ]
+	then
+		$sshoptions=" -i $sshkey"
+	fi
+	gen_tmp
+	masterssh="ssh $sshoptions -o ControlPath=$tmpfile"
+	masterscp="scp $sshoptions -o ControlPath=$tmpfile"
+
+	trap "cleanup" INT TERM HUP EXIT
 	if ! $masterssh -MNf $master
 	then
 		error "SSH connection to $master failed"
 	fi
-	trap "cleanup" INT TERM HUP EXIT
+}
+
+connect_slave ()
+{
+	gen_tmp
+	slavessh="ssh $sshoptions -o ControlPath=$tmpfile"
+	slavescp="scp $sshoptions -o ControlPath=$tmpfile"
+
+	if ! $slavessh -MNf $slave
+	then
+		error "SSH connection to $slave failed"
+	fi
+}
+
+disconnect_slave ()
+{
+	$slavessh -O exit $slave 2> /dev/null
 }
 
 list_zones ()
 {
-	if ! $masterssh $master "ls $config/*.zone"
+	if ! $masterssh $master "ls $config"
 	then
 		error "SSH connection to $master failed"
 	fi
@@ -52,31 +82,48 @@ list_zones ()
 
 edit_zone ()
 {
-	zonefile="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
-	if ! $masterscp $master:$config/$zone.zone $zonefile > /dev/null;
+	gen_tmp
+	zonefile=$tmpfile
+	if ! $masterscp $master:$config/$zone $zonefile
 	then
-		error "could not download zone file from $master"
+		error "could not download from $master"
 	fi
-	$editor $zonefile
+	if ! $EDITOR $zonefile
+	then
+		error "could not edit $zonefile"
+	fi
 }
 
 upload_zone ()
 {
 	echo "updating $master..."
-	$masterscp $zonefile $master:$config/$zone.zone > /dev/null && $masterssh $master $nsdcmd &
+	$masterscp $zonefile $master:$config/$zone &&
+	$masterssh $master "service nsd reload"
 
 	for slave in $slaves
 	do
 		echo "updating $slave..."
-		scp -i $sshkey $zonefile $slave:$config/$zone.zone > /dev/null && ssh -i $sshkey $slave $nsdcmd &
+		connect_slave
+		$slavescp $zonefile $slave:$config/$zone &&
+		$slavessh $slave "service nsd reload"
+		disconnect_slave
 	done
-	wait
 }
 
 cleanup ()
 {
 	$masterssh -O exit $master 2> /dev/null
+	$slavessh -O exit $slave 2> /dev/null
 	rm $zonefile 2> /dev/null
+}
+
+interactive_mode ()
+{
+	list_zones
+	echo "Please enter a file"
+	read zone
+	edit_zone
+	upload_zone
 }
 
 #
@@ -84,18 +131,13 @@ cleanup ()
 #
 main ()
 {
-	create_connection
+	connect_master
 	if [ $# -eq 0 ]
 	then
-		list_zones
-		echo "Please enter the zone"
-		read zone
-		edit_zone
-		upload_zone
+		interactive_mode
 	else
 	fi
+	exit 0
 }
 
 main "$@"
-
-exit 0
