@@ -113,7 +113,17 @@ upload_zone ()
 		$slavessh $slave $nsdcmd
 		disconnect_slave
 	done
-	wait
+}
+
+delete_zone ()
+{
+	$masterssh $master "rm $config/$zone"
+	for slave in $slaves
+	do
+		connect_slave
+		$slavessh $slave "rm $config/$zone"
+		disconnect_slave
+	done
 }
 
 cleanup ()
@@ -129,26 +139,32 @@ interactive_mode ()
 	echo "Enter e for edit, n for new and d for delete"
 	read ch
 	case $ch in
-		e)
-			echo "Enter a file"
-			read zone
-			get_zone
-			edit_zone
-			upload_zone
+	e)
+		echo "Enter a file"
+		read zone
+		get_zone
+		edit_zone
+		upload_zone
+		;;
+	n)
+		echo "File name"
+		read zone
+		gen_tmp
+		zonefile=$tmpfile
+		edit_zone
+		upload_zone
+		;;
+	d)
+		echo "File name"
+		read zone
+		echo "Are you sure to delete $zone? (y/N)"
+		read ch
+		case $ch in
+		y|Y|yes|YES)
+			delete_zone
 			;;
-		n)
-			echo "File name"
-			read zone
-			gen_tmp
-			zonefile=$tmpfile
-			edit_zone
-			upload_zone
-			;;
-		d)
-
-			;;
-		*)
-			interactive_mode
+		esac
+		;;
 	esac
 }
 
