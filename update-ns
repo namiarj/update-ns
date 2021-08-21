@@ -112,7 +112,7 @@ list_zones ()
 		dialogcmd="$dialogcmd $zone $zone "
 	done
 	gen_tmp
-	$dialogcmd 2> $tmpfile
+	$dialogcmd 2>$tmpfile
 	case $? in
 	0)
 		zone=`more $tmpfile`
