@@ -67,7 +67,7 @@ disconnect_slave ()
 	ssh $slaveopt -O exit $slave 2>/dev/null
 }
 
-edit_file ()
+edit_zone ()
 {
 	if [ $EDITOR ]
 	then
@@ -134,7 +134,7 @@ new_zone ()
 
 scp_master ()
 {
-	if ! scp $masteropt "$@"
+	if ! scp $masteropt $@
 	then
 		error "could not scp: $@"
 	fi
@@ -142,7 +142,7 @@ scp_master ()
 
 scp_slave ()
 {
-	if ! scp $slaveopt "$@"
+	if ! scp $slaveopt $@
 	then
 		error "could not scp: $@"
 	fi
@@ -150,7 +150,7 @@ scp_slave ()
 
 ssh_master ()
 {
-	if ! ssh $masteropt $master "$@"
+	if ! ssh $masteropt $master $@
 	then
 		error "SSH command failed: $@"
 	fi
@@ -158,7 +158,7 @@ ssh_master ()
 
 ssh_slave ()
 {
-	if ! ssh $slaveopt $slave "$@"
+	if ! ssh $slaveopt $slave $@
 	then
 		error "SSH connection to $slave failed"
 	fi
@@ -191,4 +191,4 @@ main ()
 	upload_zone
 }
 
-main "$@"
+main $@
