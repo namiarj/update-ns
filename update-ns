@@ -167,15 +167,6 @@ upload_zone ()
 	done
 }
 
-usage ()
-{
-	cat <<EOF
-usage: $progname [options] ...
-
-EOF
-	exit 1
-}
-
 #
 # Main
 #
