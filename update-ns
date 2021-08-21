@@ -13,8 +13,6 @@ nsdcmd="service nsd reload"
 #
 sshkey="~/.ssh/ns_ed255519"
 
-progname=${0##*/}
-
 #
 # Functions
 #
