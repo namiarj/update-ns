@@ -3,29 +3,77 @@
 #
 # Globals
 #
-master="gaia-dns"
-slaves="nyx-dns shu-dns"
-config="/usr/local/etc/nsd"
+master="nyx-dns"
+slaves=""
+config="/usr/local/etc/nsd/zones"
 nsdcmd="service nsd reload"
 
 #
 # Optional
 #
 sshkey="~/.ssh/ns_ed255519"
-EDITOR="nvim"
 
 progname=${0##*/}
 
 #
 # Functions
 #
-usage ()
+cleanup ()
 {
-	cat <<EOF
-usage: $progname [options] ...
+	$masterssh -O exit $master 2> /dev/null
+	$slavessh -O exit $slave 2> /dev/null
+	rm $zonefile 2> /dev/null
+}
 
-EOF
-	exit 1
+connect_slave ()
+{
+	gen_tmp
+	slaveopt="$sshoptions -o ControlPath=$tmpfile"
+
+	if ! ssh $slaveopt -MNf $slave
+	then
+		error "SSH connection to $slave failed"
+	fi
+}
+
+connect_master ()
+{
+	if [ $sshkey ]
+	then
+		sshoptions=" -i $sshkey"
+	fi
+	gen_tmp
+	masteropt="$sshoptions -o ControlPath=$tmpfile"
+
+	trap "cleanup; exit" INT TERM HUP EXIT
+	if ! ssh $masteropt -MNf $master
+	then
+		error "SSH connection to $master failed"
+	fi
+}
+
+delete_zone ()
+{
+	ssh_master "rm $config/$zone"
+	for slave in $slaves
+	do
+		connect_slave
+		ssh_slave "rm $config/$zone"
+		disconnect_slave
+	done
+}
+
+disconnect_slave ()
+{
+	ssh $slaveopt -O exit $slave 2> /dev/null
+}
+
+edit_zone ()
+{
+	if ! nvim $zonefile
+	then
+		error "could not edit $zonefile"
+	fi
 }
 
 error ()
@@ -39,133 +87,83 @@ gen_tmp ()
 	tmpfile="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
 }
 
-connect_master ()
-{
-	if [ $sshkey ]
-	then
-		sshoptions=" -i $sshkey"
-	fi
-	gen_tmp
-	masterssh="ssh $sshoptions -o ControlPath=$tmpfile"
-	masterscp="scp $sshoptions -o ControlPath=$tmpfile"
-
-	trap "cleanup" INT TERM HUP EXIT
-	if ! $masterssh -MNf $master
-	then
-		error "SSH connection to $master failed"
-	fi
-}
-
-connect_slave ()
-{
-	gen_tmp
-	slavessh="ssh $sshoptions -o ControlPath=$tmpfile"
-	slavescp="scp $sshoptions -o ControlPath=$tmpfile"
-
-	if ! $slavessh -MNf $slave
-	then
-		error "SSH connection to $slave failed"
-	fi
-}
-
-disconnect_slave ()
-{
-	$slavessh -O exit $slave 2> /dev/null
-}
-
-list_zones ()
-{
-	if ! $masterssh $master "ls $config"
-	then
-		error "SSH connection to $master failed"
-	fi
-}
-
 get_zone ()
 {
 	gen_tmp
 	zonefile=$tmpfile
-	if ! $masterscp $master:$config/$zone $zonefile
+	scp_master $master:$config/$zone $zonefile
+}
+
+interactive_mode ()
+{
+	list_zones
+	echo "Enter a file"
+	read zone
+	get_zone
+	edit_zone
+	upload_zone
+}
+
+list_zones ()
+{
+	ssh_master "ls $config"
+}
+
+scp_master ()
+{
+	if ! scp $masteropt "$@"
 	then
-		error "could not download from $master"
+		error "could not download from $master:$@"
 	fi
 }
 
-edit_zone ()
+scp_slave ()
 {
-	if ! $EDITOR $zonefile
+	if ! scp $slaveopt "$@"
 	then
-		error "could not edit $zonefile"
+		error "could not download from $slave:$@"
+	fi
+}
+
+ssh_master ()
+{
+	if ! ssh $masteropt $master "$@"
+	then
+		error "SSH command failed: $@"
+	fi
+}
+
+ssh_slave ()
+{
+	if ! ssh $slaveopt $slave "$@"
+	then
+		error "SSH connection to $slave failed"
 	fi
 }
 
 upload_zone ()
 {
 	echo "updating $master..."
-	$masterscp $zonefile $master:$config/$zone &&
-	$masterssh $master $nsdcmd
+	scp_master $zonefile $master:$config/$zone
+	ssh_master $nsdcmd
 
 	for slave in $slaves
 	do
 		echo "updating $slave..."
 		connect_slave
-		$slavescp $zonefile $slave:$config/$zone &&
-		$slavessh $slave $nsdcmd
+		scp_slave $zonefile $slave:$config/$zone
+		ssh_slave $nsdcmd
 		disconnect_slave
 	done
 }
 
-delete_zone ()
+usage ()
 {
-	$masterssh $master "rm $config/$zone"
-	for slave in $slaves
-	do
-		connect_slave
-		$slavessh $slave "rm $config/$zone"
-		disconnect_slave
-	done
-}
+	cat <<EOF
+usage: $progname [options] ...
 
-cleanup ()
-{
-	$masterssh -O exit $master 2> /dev/null
-	$slavessh -O exit $slave 2> /dev/null
-	rm $zonefile 2> /dev/null
-}
-
-interactive_mode ()
-{
-	list_zones
-	echo "Enter e for edit, n for new and d for delete"
-	read ch
-	case $ch in
-	e)
-		echo "Enter a file"
-		read zone
-		get_zone
-		edit_zone
-		upload_zone
-		;;
-	n)
-		echo "File name"
-		read zone
-		gen_tmp
-		zonefile=$tmpfile
-		edit_zone
-		upload_zone
-		;;
-	d)
-		echo "File name"
-		read zone
-		echo "Are you sure to delete $zone? (y/N)"
-		read ch
-		case $ch in
-		y|Y|yes|YES)
-			delete_zone
-			;;
-		esac
-		;;
-	esac
+EOF
+	exit 1
 }
 
 #
@@ -174,11 +172,7 @@ interactive_mode ()
 main ()
 {
 	connect_master
-	if [ $# -eq 0 ]
-	then
-		interactive_mode
-	else
-	fi
+	interactive_mode
 	exit 0
 }
 
