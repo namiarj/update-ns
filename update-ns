@@ -16,18 +16,20 @@ sshkey="~/.ssh/ns_ed255519"
 #
 # Functions
 #
+progname=${0##*/}
+
 cleanup ()
 {
-	$masterssh -O exit $master 2> /dev/null
-	$slavessh -O exit $slave 2> /dev/null
-	rm $zonefile 2> /dev/null
+	ssh $masteropt -O exit $master 2>/dev/null
+	ssh $slaveopt -O exit $slave 2>/dev/null
+	rm $zonefile 2>/dev/null
+	rm $tmpfile 2>/dev/null
 }
 
 connect_slave ()
 {
 	gen_tmp
 	slaveopt="$sshoptions -o ControlPath=$tmpfile"
-
 	if ! ssh $slaveopt -MNf $slave
 	then
 		error "SSH connection to $slave failed"
@@ -42,7 +44,6 @@ connect_master ()
 	fi
 	gen_tmp
 	masteropt="$sshoptions -o ControlPath=$tmpfile"
-
 	trap "cleanup; exit" INT TERM HUP EXIT
 	if ! ssh $masteropt -MNf $master
 	then
@@ -63,24 +64,22 @@ delete_zone ()
 
 disconnect_slave ()
 {
-	ssh $slaveopt -O exit $slave 2> /dev/null
+	ssh $slaveopt -O exit $slave 2>/dev/null
 }
 
 edit_file ()
 {
-	if [ -n $VISUAL ]
+	if [ $EDITOR ]
 	then
-		exec $VISUAL $@
-	elif [ -n $EDITOR ]
-	then
-		exec $EDITOR $@
+		$EDITOR $zonefile
 	else
 		editors="vi vim nvim nano joe emacs"
 		for editor in $editors
 		do
 			if type $editor >/dev/null 2>/dev/null
 			then
-				exec $editor $@
+				$editor $zonefile
+				return
 			fi
 		done
 	fi
@@ -94,7 +93,7 @@ error ()
 
 gen_tmp ()
 {
-	tmpfile="/tmp/$progname"."$(awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}')"
+	tmpfile="/tmp/$progname"."`awk 'BEGIN {srand();printf "%d\n", rand() * 10^10}'`"
 }
 
 get_zone ()
@@ -104,26 +103,40 @@ get_zone ()
 	scp_master $master:$config/$zone $zonefile
 }
 
-interactive_mode ()
-{
-	list_zones
-	echo "Enter a file"
-	read zone
-	get_zone
-	edit_file $zonefile
-	upload_zone
-}
-
 list_zones ()
 {
-	ssh_master "ls $config"
+	zones=`ssh_master "ls $config"`
+	dialogcmd="dialog --ok-label Edit --extra-button --extra-label New --no-tags --menu Zonefiles 15 40 15"
+	for zone in $zones
+	do
+		dialogcmd="$dialogcmd $zone $zone "
+	done
+	gen_tmp
+	$dialogcmd 2> $tmpfile
+	case $? in
+	0)
+		zone=`more $tmpfile`
+		rm $tmpfile
+		;;
+	3)
+		new_zone
+		;;
+	*)
+		exit 1
+		;;
+	esac
+}
+
+new_zone ()
+{
+	exit
 }
 
 scp_master ()
 {
 	if ! scp $masteropt "$@"
 	then
-		error "could not download from $master:$@"
+		error "could not scp: $@"
 	fi
 }
 
@@ -131,7 +144,7 @@ scp_slave ()
 {
 	if ! scp $slaveopt "$@"
 	then
-		error "could not download from $slave:$@"
+		error "could not scp: $@"
 	fi
 }
 
@@ -156,7 +169,6 @@ upload_zone ()
 	echo "updating $master..."
 	scp_master $zonefile $master:$config/$zone
 	ssh_master $nsdcmd
-
 	for slave in $slaves
 	do
 		echo "updating $slave..."
@@ -173,8 +185,10 @@ upload_zone ()
 main ()
 {
 	connect_master
-	interactive_mode
-	exit 0
+	list_zones
+	get_zone
+	edit_zone
+	upload_zone
 }
 
 main "$@"
