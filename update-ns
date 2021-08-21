@@ -13,6 +13,8 @@ nsdcmd="service nsd reload"
 #
 sshkey="~/.ssh/ns_ed255519"
 
+progname=${0##*/}
+
 #
 # Functions
 #
@@ -66,11 +68,23 @@ disconnect_slave ()
 	ssh $slaveopt -O exit $slave 2> /dev/null
 }
 
-edit_zone ()
+edit_file ()
 {
-	if ! nvim $zonefile
+	if [ -n $VISUAL ]
 	then
-		error "could not edit $zonefile"
+		exec $VISUAL $@
+	elif [ -n $EDITOR ]
+	then
+		exec $EDITOR $@
+	else
+		editors="vi vim nvim nano joe emacs"
+		for editor in $editors
+		do
+			if type $editor >/dev/null 2>/dev/null
+			then
+				exec $editor $@
+			fi
+		done
 	fi
 }
 
@@ -98,7 +112,7 @@ interactive_mode ()
 	echo "Enter a file"
 	read zone
 	get_zone
-	edit_zone
+	edit_file $zonefile
 	upload_zone
 }
 
@@ -153,6 +167,15 @@ upload_zone ()
 		ssh_slave $nsdcmd
 		disconnect_slave
 	done
+}
+
+usage ()
+{
+	cat <<EOF
+usage: $progname [options] ...
+
+EOF
+	exit 1
 }
 
 #
