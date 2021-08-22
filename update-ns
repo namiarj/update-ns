@@ -18,6 +18,11 @@ sshkey="~/.ssh/ns_ed255519"
 #
 progname=${0##*/}
 
+check_zone ()
+{
+	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1 -f2` $config/$zone" 
+}
+
 cleanup ()
 {
 	ssh $masteropt -O exit $master 2>/dev/null
@@ -112,7 +117,7 @@ list_zones ()
 		dialogcmd="$dialogcmd $zone $zone "
 	done
 	gen_tmp
-	$dialogcmd 2>$tmpfile
+	$dialogcmd 2> $tmpfile
 	case $? in
 	0)
 		zone=`more $tmpfile`
@@ -168,6 +173,7 @@ upload_zone ()
 {
 	echo "updating $master..."
 	scp_master $zonefile $master:$config/$zone
+	check_zone
 	ssh_master $nsdcmd
 	for slave in $slaves
 	do
