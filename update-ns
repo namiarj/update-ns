@@ -6,7 +6,7 @@
 master="nyx-dns"
 slaves=""
 config="/usr/local/etc/nsd/zones"
-nsdcmd="nsd-control notify"
+nsdcmd="service nsd reload"
 
 #
 # Optional
