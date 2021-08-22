@@ -20,7 +20,7 @@ progname=${0##*/}
 
 check_zone ()
 {
-	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1 -f2` $config/$zone" 
+	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1,2` $config/$zone" 
 }
 
 cleanup ()
