@@ -121,7 +121,6 @@ list_zones ()
 	case $? in
 	0)
 		zone=`more $tmpfile`
-		rm $tmpfile
 		;;
 	3)
 		new_zone
@@ -130,6 +129,7 @@ list_zones ()
 		exit 1
 		;;
 	esac
+	rm $tmpfile
 }
 
 new_zone ()
