@@ -20,7 +20,7 @@ progname=${0##*/}
 
 check_zone ()
 {
-	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1,2` $config/$zone" 
+	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1 -f2` $config/$zone" 
 }
 
 cleanup ()
@@ -78,7 +78,7 @@ edit_zone ()
 	then
 		$EDITOR $zonefile
 	else
-		editors="vi vim nvim nano joe emacs"
+		editors="nvim vim vi nano joe emacs"
 		for editor in $editors
 		do
 			if type $editor >/dev/null 2>/dev/null
@@ -121,20 +121,22 @@ list_zones ()
 	case $? in
 	0)
 		zone=`more $tmpfile`
+		get_zone
+		edit_zone
+		upload_zone
 		;;
 	3)
 		new_zone
 		;;
 	*)
-		exit 1
-		;;
+		exit 0
 	esac
 	rm $tmpfile
 }
 
 new_zone ()
 {
-	exit
+	exit 0
 }
 
 scp_master ()
@@ -191,10 +193,10 @@ upload_zone ()
 main ()
 {
 	connect_master
-	list_zones
-	get_zone
-	edit_zone
-	upload_zone
+	while true
+	do
+		list_zones
+	done
 }
 
 main $@
