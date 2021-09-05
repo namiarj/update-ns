@@ -20,7 +20,7 @@ progname=${0##*/}
 
 check_zone ()
 {
-	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1 -f2` $config/$zone" 
+	ssh_master "nsd-checkzone `echo $zone | cut -d'.' -f1,2` $config/$zone" 
 }
 
 cleanup ()
@@ -111,10 +111,11 @@ get_zone ()
 list_zones ()
 {
 	zones=`ssh_master "ls $config"`
-	dialogcmd="dialog --ok-label Edit --extra-button --extra-label New --no-tags --menu Zonefiles 15 40 15"
+	dialogcmd="dialog --ok-label Edit --extra-button --extra-label New --help-button --help-label Delete --no-tags --menu Zones 15 40 15"
 	for zone in $zones
 	do
-		dialogcmd="$dialogcmd $zone $zone "
+		# remove file extension
+		dialogcmd="$dialogcmd $zone `echo $zone | cut -d'.' -f1,2`"
 	done
 	gen_tmp
 	$dialogcmd 2> $tmpfile
@@ -122,8 +123,19 @@ list_zones ()
 	0)
 		zone=`more $tmpfile`
 		get_zone
+		mtime=`stat -f'%m' $zonefile`
 		edit_zone
-		upload_zone
+		if [ `stat -f'%m' $zonefile` -ne $mtime ]
+		then
+			upload_zone
+		fi
+		;;
+	2)
+		zone=`more $tmpfile | cut -c'6-63'`
+		if dialog --default-button No --yesno "Delete `echo $zone | cut -d'.' -f1,2`?" 5 40
+		then
+			delete_zone
+		fi
 		;;
 	3)
 		new_zone
